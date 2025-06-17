@@ -191,6 +191,31 @@ def send_wa_bulk(message: str) -> None:
         send_wa_message(phone, message)
 
 
+def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | None, start_dt: datetime) -> None:
+    """Send immediate WhatsApp notifications when a booking is made."""
+    formatted_dt = format_pt_br(start_dt)
+    
+    # Mensagem para o lead
+    if whatsapp:
+        lead_message = (
+            f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
+            f"📅 Data: {formatted_dt}\n"
+            "🖥️ Link da reunião Zoom:\n"
+            "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1\n\n"
+            "Aguardamos você! Qualquer dúvida, estamos à disposição."
+        )
+        send_wa_message(whatsapp, lead_message)
+    
+    # Mensagem para o time de vendas
+    sales_message = (
+        f"💼 Nova Reunião Agendada!\n\n"
+        f"👤 Cliente: {attendee_name}\n"
+        f"📅 Data: {formatted_dt}"
+    )
+    for admin_phone in ADMIN_PHONES:
+        send_wa_message(admin_phone, sales_message)
+
+
 # -----------------------------------------------------------------------------
 # Webhook endpoint
 # -----------------------------------------------------------------------------
@@ -238,7 +263,10 @@ async def cal_webhook(
     else:
         print(f"Não encontrou página no Notion para email: {attendee.email} ou whatsapp: {whatsapp}")
 
-    # Schedule WhatsApp messages
+    # Send immediate notifications
+    send_immediate_booking_notifications(attendee.name, whatsapp, start_dt)
+
+    # Schedule future WhatsApp messages
     first_name = attendee.name.split()[0]
     schedule_messages(first_name, start_dt)
 
