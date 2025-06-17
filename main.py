@@ -54,8 +54,14 @@ scheduler.start()
 # -----------------------------------------------------------------------------
 class Attendee(BaseModel):
     name: str
-    email: Optional[str] | None = None
-    phone: Optional[str] | None = None
+    email: str
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    timeZone: Optional[str] = None
+
+
+class UserFieldsResponses(BaseModel):
+    Whatsapp: Optional[dict] = None
 
 
 class Booking(BaseModel):
@@ -63,6 +69,7 @@ class Booking(BaseModel):
     end_time: str = Field(..., alias="endTime")
     attendees: List[Attendee]
     uid: str
+    userFieldsResponses: Optional[UserFieldsResponses] = None
 
 
 class CalWebhookPayload(BaseModel):
@@ -94,13 +101,20 @@ def notion_find_page(email: str | None, phone: str | None) -> Optional[str]:
     if email:
         filters.append({"property": "Email", "email": {"equals": email}})
     if phone:
-        filters.append({"property": "Telefone", "phone_number": {"equals": phone}})
+        # Remove caracteres não numéricos do telefone
+        clean_phone = ''.join(filter(str.isdigit, phone))
+        # Se começar com +55, remove
+        if clean_phone.startswith('55'):
+            clean_phone = clean_phone[2:]
+        filters.append({"property": "Telefone", "phone_number": {"equals": clean_phone}})
 
     # Combine filters with OR if both present
     if len(filters) == 2:
         filter_json = {"or": filters}
     else:
         filter_json = filters[0]
+
+    print(f"Buscando no Notion com filtro: {json.dumps(filter_json, indent=2)}")
 
     resp = httpx.post(
         f"https://api.notion.com/v1/databases/{NOTION_DB}/query",
@@ -110,6 +124,12 @@ def notion_find_page(email: str | None, phone: str | None) -> Optional[str]:
     )
     resp.raise_for_status()
     results = resp.json().get("results", [])
+    
+    if results:
+        print(f"Encontrou página no Notion: {results[0]['id']}")
+    else:
+        print("Nenhuma página encontrada no Notion")
+    
     return results[0]["id"] if results else None
 
 
@@ -195,7 +215,8 @@ async def cal_webhook(
             detail=f"Payload inválido: {str(e)}"
         )
 
-    if data.trigger_event not in {"BOOKING_CREATED", "BOOKING_RESCHEDULED"}:
+    # Agora aceitamos BOOKING_REQUESTED também
+    if data.trigger_event not in {"BOOKING_CREATED", "BOOKING_RESCHEDULED", "BOOKING_REQUESTED"}:
         return {"ignored": data.trigger_event}
 
     attendee = data.payload.attendees[0]
@@ -205,9 +226,17 @@ async def cal_webhook(
     formatted_pt = format_pt_br(start_dt)
 
     # Notion sync
-    page_id = notion_find_page(attendee.email, attendee.phone)
+    # Pegamos o WhatsApp do userFieldsResponses se disponível
+    whatsapp = None
+    if data.payload.userFieldsResponses and data.payload.userFieldsResponses.Whatsapp:
+        whatsapp = data.payload.userFieldsResponses.Whatsapp.get("value")
+
+    page_id = notion_find_page(attendee.email, whatsapp)
     if page_id:
         notion_update_datetime(page_id, formatted_pt)
+        print(f"Atualizou Notion page_id: {page_id} com data: {formatted_pt}")
+    else:
+        print(f"Não encontrou página no Notion para email: {attendee.email} ou whatsapp: {whatsapp}")
 
     # Schedule WhatsApp messages
     first_name = attendee.name.split()[0]
