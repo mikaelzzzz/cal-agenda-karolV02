@@ -43,7 +43,7 @@ ZAPI_BASE = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}"
 app = FastAPI(
     title="Cal.com → Notion + WhatsApp Integration",
     description="Integration service that receives Cal.com webhooks and syncs with Notion and WhatsApp",
-    version="1.0.0"
+    version="1.0.1"
 )
 
 scheduler = AsyncIOScheduler()
