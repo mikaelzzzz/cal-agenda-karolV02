@@ -156,11 +156,33 @@ def notion_update_datetime(page_id: str, when: str) -> None:
         raise
 
 
-def send_wa_message(phone: str, message: str) -> None:
+def send_wa_message(phone: str, message: str, has_link: bool = False, link_data: dict = None) -> None:
     print(f"Enviando mensagem WhatsApp para {phone}")
-    payload = {"phone": phone, "message": message}
+    
+    # Remove o '+' do início do número se existir
+    if phone.startswith('+'):
+        phone = phone[1:]
+    
+    if has_link and link_data:
+        # Usa o endpoint send-link para mensagens com link
+        endpoint = f"{ZAPI_BASE}/send-link"
+        payload = {
+            "phone": phone,
+            "message": message,
+            "linkUrl": link_data["url"],
+            "title": link_data.get("title", "Reunião Zoom"),
+            "linkDescription": link_data.get("description", "Link para a reunião"),
+            "linkType": "LARGE"
+        }
+        if link_data.get("image"):
+            payload["image"] = link_data["image"]
+    else:
+        # Usa o endpoint padrão para mensagens simples
+        endpoint = f"{ZAPI_BASE}/send-message"
+        payload = {"phone": phone, "message": message}
+
     try:
-        resp = httpx.post(f"{ZAPI_BASE}/send-message", json=payload, timeout=15)
+        resp = httpx.post(endpoint, json=payload, timeout=15)
         resp.raise_for_status()
         print(f"Mensagem WhatsApp enviada com sucesso para {phone}")
         print(f"Resposta Z-API: {resp.text}")
@@ -208,6 +230,7 @@ def send_wa_bulk(message: str) -> None:
 def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | None, start_dt: datetime) -> None:
     """Send immediate WhatsApp notifications when a booking is made."""
     formatted_dt = format_pt_br(start_dt)
+    zoom_url = "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1"
     
     # Mensagem para o lead
     if whatsapp:
@@ -215,10 +238,18 @@ def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | Non
             f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
             f"📅 Data: {formatted_dt}\n"
             "🖥️ Link da reunião Zoom:\n"
-            "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1\n\n"
-            "Aguardamos você! Qualquer dúvida, estamos à disposição."
+            f"{zoom_url}"
         )
-        send_wa_message(whatsapp, lead_message)
+        
+        # Dados do link para o Zoom
+        link_data = {
+            "url": zoom_url,
+            "title": "Reunião Zoom",
+            "description": f"Reunião agendada para {formatted_dt}",
+            "image": "https://1000logos.net/wp-content/uploads/2021/06/Zoom-icon.png"
+        }
+        
+        send_wa_message(whatsapp, lead_message, has_link=True, link_data=link_data)
     
     # Mensagem para o time de vendas
     sales_message = (
