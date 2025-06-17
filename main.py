@@ -26,6 +26,7 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DB = os.getenv("NOTION_DB")
 ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE")
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN")
 ADMIN_PHONES = [p.strip() for p in os.getenv("ADMIN_PHONES", "").split(",") if p]
 TZ = pytz.timezone(os.getenv("TZ", "America/Sao_Paulo"))
 
@@ -163,6 +164,10 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
     if phone.startswith('+'):
         phone = phone[1:]
     
+    headers = {}
+    if ZAPI_CLIENT_TOKEN:
+        headers["Client-Token"] = ZAPI_CLIENT_TOKEN
+    
     if has_link and link_data:
         # Usa o endpoint send-link para mensagens com link
         endpoint = f"{ZAPI_BASE}/send-link"
@@ -182,12 +187,16 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         payload = {"phone": phone, "message": message}
 
     try:
-        resp = httpx.post(endpoint, json=payload, timeout=15)
+        resp = httpx.post(endpoint, json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
         print(f"Mensagem WhatsApp enviada com sucesso para {phone}")
         print(f"Resposta Z-API: {resp.text}")
     except Exception as e:
         print(f"Erro ao enviar mensagem WhatsApp para {phone}: {str(e)}")
+        # Se falhar com o endpoint send-link, tenta novamente com send-message
+        if has_link:
+            print("Tentando enviar como mensagem simples...")
+            return send_wa_message(phone, message, has_link=False)
         raise
 
 
