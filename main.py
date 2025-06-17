@@ -134,6 +134,7 @@ def notion_find_page(email: str | None, phone: str | None) -> Optional[str]:
 
 
 def notion_update_datetime(page_id: str, when: str) -> None:
+    print(f"Atualizando Notion page {page_id} com data {when}")
     payload = {
         "properties": {
             "Data Agendada pelo Lead": {
@@ -141,18 +142,31 @@ def notion_update_datetime(page_id: str, when: str) -> None:
             }
         }
     }
-    resp = httpx.patch(
-        f"https://api.notion.com/v1/pages/{page_id}",
-        headers=HEADERS_NOTION,
-        json=payload,
-        timeout=15,
-    )
-    resp.raise_for_status()
+    try:
+        resp = httpx.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers=HEADERS_NOTION,
+            json=payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        print(f"Notion atualizado com sucesso: {resp.status_code}")
+    except Exception as e:
+        print(f"Erro ao atualizar Notion: {str(e)}")
+        raise
 
 
 def send_wa_message(phone: str, message: str) -> None:
+    print(f"Enviando mensagem WhatsApp para {phone}")
     payload = {"phone": phone, "message": message}
-    httpx.post(f"{ZAPI_BASE}/send-message", json=payload, timeout=15)
+    try:
+        resp = httpx.post(f"{ZAPI_BASE}/send-message", json=payload, timeout=15)
+        resp.raise_for_status()
+        print(f"Mensagem WhatsApp enviada com sucesso para {phone}")
+        print(f"Resposta Z-API: {resp.text}")
+    except Exception as e:
+        print(f"Erro ao enviar mensagem WhatsApp para {phone}: {str(e)}")
+        raise
 
 
 def schedule_messages(first_name: str, meeting_dt: datetime) -> None:
@@ -223,53 +237,87 @@ def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | Non
 async def cal_webhook(
     request: Request, x_cal_signature_256: str = Header(None)
 ):
+    print("\n=== Novo webhook recebido ===")
+    print(f"Signature: {x_cal_signature_256}")
+    
     raw_body = await request.body()
-    verify_signature(x_cal_signature_256, raw_body)
+    try:
+        verify_signature(x_cal_signature_256, raw_body)
+        print("✓ Assinatura verificada com sucesso")
+    except Exception as e:
+        print(f"✗ Erro na verificação da assinatura: {str(e)}")
+        raise
 
     # Log do payload recebido
-    print("Payload recebido do Cal.com:")
-    print(json.loads(raw_body))
+    print("\nPayload recebido do Cal.com:")
+    payload_json = json.loads(raw_body)
+    print(json.dumps(payload_json, indent=2))
 
     try:
         data = CalWebhookPayload.model_validate_json(raw_body)
+        print("✓ Payload validado com sucesso")
     except ValidationError as e:
-        print("Erro de validação:")
+        print("✗ Erro de validação:")
         print(e.json())
         raise HTTPException(
             status_code=400,
             detail=f"Payload inválido: {str(e)}"
         )
 
-    # Agora aceitamos BOOKING_REQUESTED também
+    print(f"\nTipo de evento: {data.trigger_event}")
     if data.trigger_event not in {"BOOKING_CREATED", "BOOKING_RESCHEDULED", "BOOKING_REQUESTED"}:
+        print(f"Evento ignorado: {data.trigger_event}")
         return {"ignored": data.trigger_event}
 
     attendee = data.payload.attendees[0]
     start_iso = data.payload.start_time
     start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00")).astimezone(TZ)
-
     formatted_pt = format_pt_br(start_dt)
 
+    print(f"\nDetalhes do agendamento:")
+    print(f"Nome: {attendee.name}")
+    print(f"Email: {attendee.email}")
+    print(f"Data: {formatted_pt}")
+
     # Notion sync
-    # Pegamos o WhatsApp do userFieldsResponses se disponível
     whatsapp = None
     if data.payload.userFieldsResponses and data.payload.userFieldsResponses.Whatsapp:
         whatsapp = data.payload.userFieldsResponses.Whatsapp.get("value")
-
-    page_id = notion_find_page(attendee.email, whatsapp)
-    if page_id:
-        notion_update_datetime(page_id, formatted_pt)
-        print(f"Atualizou Notion page_id: {page_id} com data: {formatted_pt}")
+        print(f"WhatsApp encontrado: {whatsapp}")
     else:
-        print(f"Não encontrou página no Notion para email: {attendee.email} ou whatsapp: {whatsapp}")
+        print("Nenhum número de WhatsApp fornecido")
 
-    # Send immediate notifications
-    send_immediate_booking_notifications(attendee.name, whatsapp, start_dt)
+    try:
+        page_id = notion_find_page(attendee.email, whatsapp)
+        if page_id:
+            notion_update_datetime(page_id, formatted_pt)
+            print(f"✓ Notion atualizado com sucesso")
+        else:
+            print("✗ Página não encontrada no Notion")
+    except Exception as e:
+        print(f"✗ Erro na integração com Notion: {str(e)}")
+        raise
 
-    # Schedule future WhatsApp messages
-    first_name = attendee.name.split()[0]
-    schedule_messages(first_name, start_dt)
+    try:
+        # Send immediate notifications
+        print("\nEnviando notificações imediatas...")
+        send_immediate_booking_notifications(attendee.name, whatsapp, start_dt)
+        print("✓ Notificações imediatas enviadas com sucesso")
+    except Exception as e:
+        print(f"✗ Erro ao enviar notificações: {str(e)}")
+        raise
 
+    try:
+        # Schedule future WhatsApp messages
+        print("\nAgendando mensagens futuras...")
+        first_name = attendee.name.split()[0]
+        schedule_messages(first_name, start_dt)
+        print("✓ Mensagens futuras agendadas com sucesso")
+    except Exception as e:
+        print(f"✗ Erro ao agendar mensagens: {str(e)}")
+        raise
+
+    print("\n=== Webhook processado com sucesso ===\n")
     return {"status": "ok", "scheduled": True}
 
 
