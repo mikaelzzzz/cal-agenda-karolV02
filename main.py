@@ -66,7 +66,7 @@ class Booking(BaseModel):
 
 
 class CalWebhookPayload(BaseModel):
-    event: str
+    trigger_event: str = Field(..., alias="triggerEvent")
     payload: Booking
 
 
@@ -181,10 +181,22 @@ async def cal_webhook(
     raw_body = await request.body()
     verify_signature(x_cal_signature_256, raw_body)
 
-    data = CalWebhookPayload.model_validate_json(raw_body)
+    # Log do payload recebido
+    print("Payload recebido do Cal.com:")
+    print(json.loads(raw_body))
 
-    if data.event not in {"BOOKING_CREATED", "BOOKING_RESCHEDULED"}:
-        return {"ignored": data.event}
+    try:
+        data = CalWebhookPayload.model_validate_json(raw_body)
+    except ValidationError as e:
+        print("Erro de validação:")
+        print(e.json())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payload inválido: {str(e)}"
+        )
+
+    if data.trigger_event not in {"BOOKING_CREATED", "BOOKING_RESCHEDULED"}:
+        return {"ignored": data.trigger_event}
 
     attendee = data.payload.attendees[0]
     start_iso = data.payload.start_time
