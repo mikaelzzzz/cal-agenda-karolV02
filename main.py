@@ -71,6 +71,8 @@ class Booking(BaseModel):
     attendees: List[Attendee]
     uid: str
     userFieldsResponses: Optional[UserFieldsResponses] = None
+    eventDescription: Optional[str] = None
+    videoCallData: Optional[dict] = None
 
 
 class CalWebhookPayload(BaseModel):
@@ -234,20 +236,57 @@ def send_wa_bulk(message: str) -> None:
         send_wa_message(phone, message)
 
 
+def extract_zoom_info(description: str) -> dict:
+    """Extract Zoom meeting information from event description."""
+    info = {
+        "url": None,
+        "id": None,
+        "password": None
+    }
+    
+    if not description:
+        return info
+    
+    # Try to find the Zoom URL
+    import re
+    url_match = re.search(r'https://[^\s<>\[\]]+zoom.us/j/\d+\?[^\s<>\[\]]+', description)
+    if url_match:
+        info["url"] = url_match.group(0)
+    
+    # Try to find meeting ID
+    id_match = re.search(r'ID da reunião:\*\*\*\* (\d+(?:\s*\d+)*)', description)
+    if id_match:
+        info["id"] = id_match.group(1).replace(" ", "")
+    
+    # Try to find password
+    pwd_match = re.search(r'Senha:\*\*\*\* ([^\n<]+)', description)
+    if pwd_match:
+        info["password"] = pwd_match.group(1)
+    
+    return info
+
+
 def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | None, start_dt: datetime) -> None:
     """Send immediate WhatsApp notifications when a booking is made."""
     formatted_dt = format_pt_br(start_dt)
     zoom_url = "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1"
+    zoom_id = "890 284 1864"
+    zoom_pwd = "Flexge2025"
     
     # Mensagem para o lead
     if whatsapp:
         lead_message = (
             f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
             f"📅 Data: {formatted_dt}\n"
-            "🖥️ Link da reunião Zoom:"
+            "🖥️ Informações da reunião Zoom:\n\n"
         )
         
-        # Dados do link para o Zoom
+        lead_message += f"Link de acesso:\n{zoom_url}\n\n"
+        lead_message += f"ID da reunião: {zoom_id}\n"
+        lead_message += f"Senha: {zoom_pwd}\n"
+        lead_message += "\nAguardamos você! Qualquer dúvida, estamos à disposição."
+        
+        # Dados do link
         link_data = {
             "url": zoom_url,
             "title": "Reunião Zoom",
@@ -335,7 +374,6 @@ async def cal_webhook(
         raise
 
     try:
-        # Send immediate notifications
         print("\nEnviando notificações imediatas...")
         send_immediate_booking_notifications(attendee.name, whatsapp, start_dt)
         print("✓ Notificações imediatas enviadas com sucesso")
@@ -343,18 +381,12 @@ async def cal_webhook(
         print(f"✗ Erro ao enviar notificações: {str(e)}")
         raise
 
-    try:
-        # Schedule future WhatsApp messages
-        print("\nAgendando mensagens futuras...")
-        first_name = attendee.name.split()[0]
-        schedule_messages(first_name, start_dt)
-        print("✓ Mensagens futuras agendadas com sucesso")
-    except Exception as e:
-        print(f"✗ Erro ao agendar mensagens: {str(e)}")
-        raise
+    print("\nAgendando mensagens futuras...")
+    schedule_messages(attendee.name, start_dt)
+    print("✓ Mensagens futuras agendadas com sucesso")
 
-    print("\n=== Webhook processado com sucesso ===\n")
-    return {"status": "ok", "scheduled": True}
+    print("\n=== Webhook processado com sucesso ===")
+    return {"success": True}
 
 
 # -----------------------------------------------------------------------------
