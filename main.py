@@ -378,8 +378,15 @@ async def cal_webhook(
 
     # Notion sync
     whatsapp = None
-    if data.payload.userFieldsResponses and data.payload.userFieldsResponses.Whatsapp:
+    # 1. Tenta userFieldsResponses
+    if data.payload.userFieldsResponses and getattr(data.payload.userFieldsResponses, 'Whatsapp', None):
         whatsapp = data.payload.userFieldsResponses.Whatsapp.get("value")
+    # 2. Tenta responses se não encontrou
+    if not whatsapp and hasattr(data.payload, 'responses'):
+        resp = data.payload.responses
+        if isinstance(resp, dict) and 'WhatsApp' in resp and 'value' in resp['WhatsApp']:
+            whatsapp = resp['WhatsApp']['value']
+    if whatsapp:
         print(f"WhatsApp encontrado: {whatsapp}")
     else:
         print("Nenhum número de WhatsApp fornecido")
