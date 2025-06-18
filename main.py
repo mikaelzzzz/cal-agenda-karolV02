@@ -190,8 +190,8 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         }
         print(f"Enviando link com payload: {json.dumps(payload, indent=2)}")
     else:
-        # Caso contrário, usar o endpoint padrão de texto
-        url = f"{base_url}/text"
+        # Tentar endpoint /send-text
+        url = f"{base_url}/send-text"
         payload = {
             "phone": clean_phone,
             "message": message
