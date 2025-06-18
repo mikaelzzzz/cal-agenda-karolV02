@@ -385,14 +385,18 @@ async def cal_webhook(
     if data.payload.userFieldsResponses and getattr(data.payload.userFieldsResponses, 'Whatsapp', None):
         whatsapp = data.payload.userFieldsResponses.Whatsapp.get("value")
     # 2. Tenta responses se não encontrou
-    if not whatsapp and hasattr(data.payload, 'responses'):
-        resp = data.payload.responses
-        if isinstance(resp, dict) and 'WhatsApp' in resp and 'value' in resp['WhatsApp']:
-            whatsapp = resp['WhatsApp']['value']
+    if not whatsapp:
+        resp = getattr(data.payload, 'responses', None)
+        if resp:
+            # Pode ser dict ou objeto
+            if isinstance(resp, dict) and 'WhatsApp' in resp and 'value' in resp['WhatsApp']:
+                whatsapp = resp['WhatsApp']['value']
+            elif hasattr(resp, 'WhatsApp') and hasattr(resp.WhatsApp, 'value'):
+                whatsapp = resp.WhatsApp.value
     if whatsapp:
         print(f"WhatsApp encontrado: {whatsapp}")
     else:
-        print("Nenhum número de WhatsApp fornecido")
+        print(f"Nenhum número de WhatsApp fornecido. responses: {getattr(data.payload, 'responses', None)}")
 
     try:
         page_id = notion_find_page(attendee.email, whatsapp)
