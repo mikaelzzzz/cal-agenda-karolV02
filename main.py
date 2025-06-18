@@ -160,18 +160,27 @@ def notion_update_datetime(page_id: str, when: str) -> None:
 
 def send_wa_message(phone: str, message: str, has_link: bool = False, link_data: dict | None = None) -> None:
     """Send a WhatsApp message using Z-API."""
-    print(f"Enviando mensagem WhatsApp para {phone}")
+    # Limpar o número de telefone (remover caracteres não numéricos)
+    clean_phone = ''.join(filter(str.isdigit, phone))
+    # Garantir que comece com 55 (Brasil)
+    if not clean_phone.startswith('55'):
+        clean_phone = '55' + clean_phone
+    
+    print(f"Enviando mensagem WhatsApp para {clean_phone}")
+    print(f"Conteúdo da mensagem: {message}")
     
     headers = {
         "Client-Token": ZAPI_CLIENT_TOKEN,
         "Content-Type": "application/json"
     }
     
+    base_url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}"
+    
     # Se tiver link, usar o endpoint de send-link
     if has_link and link_data:
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-link"
+        url = f"{base_url}/send-link"
         payload = {
-            "phone": phone,
+            "phone": clean_phone,
             "message": message,
             "image": link_data.get("image"),  # Optional
             "linkUrl": link_data["url"],
@@ -179,18 +188,30 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
             "linkDescription": link_data["description"],
             "linkType": "LARGE"  # Use LARGE para melhor visualização
         }
+        print(f"Enviando link com payload: {json.dumps(payload, indent=2)}")
     else:
         # Caso contrário, usar o endpoint padrão de texto
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/message/text"
+        url = f"{base_url}/text"
         payload = {
-            "phone": phone,
+            "phone": clean_phone,
             "message": message
         }
+        print(f"Enviando texto com payload: {json.dumps(payload, indent=2)}")
+    
+    print(f"URL da requisição: {url}")
     
     try:
         response = requests.post(url, headers=headers, json=payload)
-        print(f"Mensagem WhatsApp enviada com sucesso para {phone}")
-        print(f"Resposta Z-API: {response.text}")
+        response_text = response.text
+        print(f"Status code: {response.status_code}")
+        print(f"Resposta Z-API: {response_text}")
+        
+        if response.status_code != 200 or "error" in response_text.lower():
+            print("Erro detectado na resposta!")
+            print(f"Headers enviados: {json.dumps(headers, indent=2)}")
+        else:
+            print("Mensagem enviada com sucesso!")
+            
         response.raise_for_status()
     except Exception as e:
         print(f"Erro ao enviar mensagem WhatsApp: {str(e)}")
