@@ -169,22 +169,24 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         headers["Client-Token"] = ZAPI_CLIENT_TOKEN
     
     if has_link and link_data:
-        # Usa o endpoint send-link para mensagens com link
-        endpoint = f"{ZAPI_BASE}/send-link"
+        # Usa o endpoint text-message com preview de link
+        endpoint = f"{ZAPI_BASE}/message/text"
+        preview_url = True
         payload = {
             "phone": phone,
-            "message": message,
-            "linkUrl": link_data["url"],
-            "title": link_data.get("title", "Reunião Zoom"),
-            "linkDescription": link_data.get("description", "Link para a reunião"),
-            "linkType": "LARGE"
+            "message": (
+                f"{message}\n\n"
+                f"Link da reunião: {link_data['url']}"
+            ),
+            "preview_url": preview_url
         }
-        if link_data.get("image"):
-            payload["image"] = link_data["image"]
     else:
         # Usa o endpoint padrão para mensagens simples
-        endpoint = f"{ZAPI_BASE}/send-message"
-        payload = {"phone": phone, "message": message}
+        endpoint = f"{ZAPI_BASE}/message/text"
+        payload = {
+            "phone": phone,
+            "message": message
+        }
 
     try:
         resp = httpx.post(endpoint, json=payload, headers=headers, timeout=15)
@@ -193,10 +195,6 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         print(f"Resposta Z-API: {resp.text}")
     except Exception as e:
         print(f"Erro ao enviar mensagem WhatsApp para {phone}: {str(e)}")
-        # Se falhar com o endpoint send-link, tenta novamente com send-message
-        if has_link:
-            print("Tentando enviar como mensagem simples...")
-            return send_wa_message(phone, message, has_link=False)
         raise
 
 
@@ -246,16 +244,14 @@ def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | Non
         lead_message = (
             f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
             f"📅 Data: {formatted_dt}\n"
-            "🖥️ Link da reunião Zoom:\n"
-            f"{zoom_url}"
+            "🖥️ Link da reunião Zoom:"
         )
         
         # Dados do link para o Zoom
         link_data = {
             "url": zoom_url,
             "title": "Reunião Zoom",
-            "description": f"Reunião agendada para {formatted_dt}",
-            "image": "https://1000logos.net/wp-content/uploads/2021/06/Zoom-icon.png"
+            "description": f"Reunião agendada para {formatted_dt}"
         }
         
         send_wa_message(whatsapp, lead_message, has_link=True, link_data=link_data)
