@@ -381,22 +381,41 @@ async def cal_webhook(
 
     # Notion sync
     whatsapp = None
-    # 1. Tenta userFieldsResponses
-    if data.payload.userFieldsResponses and getattr(data.payload.userFieldsResponses, 'Whatsapp', None):
-        whatsapp = data.payload.userFieldsResponses.Whatsapp.get("value")
+    # 1. Tenta userFieldsResponses (como dict ou objeto)
+    ufr = getattr(data.payload, 'userFieldsResponses', None)
+    if ufr:
+        if isinstance(ufr, dict) and 'WhatsApp' in ufr and 'value' in ufr['WhatsApp']:
+            whatsapp = ufr['WhatsApp']['value']
+        elif hasattr(ufr, 'Whatsapp') and hasattr(ufr.Whatsapp, 'get'):
+            whatsapp = ufr.Whatsapp.get("value")
     # 2. Tenta responses se não encontrou
     if not whatsapp:
         resp = getattr(data.payload, 'responses', None)
         if resp:
-            # Pode ser dict ou objeto
             if isinstance(resp, dict) and 'WhatsApp' in resp and 'value' in resp['WhatsApp']:
                 whatsapp = resp['WhatsApp']['value']
             elif hasattr(resp, 'WhatsApp') and hasattr(resp.WhatsApp, 'value'):
                 whatsapp = resp.WhatsApp.value
+    # 3. Se ainda não encontrou, busca no Notion (propriedade Telefone, tipo Rich text)
+    if not whatsapp and attendee.email:
+        page_id = notion_find_page(attendee.email, None)
+        if page_id:
+            resp = httpx.get(
+                f"https://api.notion.com/v1/pages/{page_id}",
+                headers=HEADERS_NOTION,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            page = resp.json()
+            props = page.get("properties", {})
+            for k, v in props.items():
+                if k == "Telefone" and v.get("type") == "rich_text" and v.get("rich_text"):
+                    whatsapp = v["rich_text"][0]["plain_text"]
+                    break
     if whatsapp:
         print(f"WhatsApp encontrado: {whatsapp}")
     else:
-        print(f"Nenhum número de WhatsApp fornecido. responses: {getattr(data.payload, 'responses', None)}")
+        print(f"Nenhum número de WhatsApp fornecido. userFieldsResponses: {ufr}, responses: {getattr(data.payload, 'responses', None)}")
 
     try:
         page_id = notion_find_page(attendee.email, whatsapp)
