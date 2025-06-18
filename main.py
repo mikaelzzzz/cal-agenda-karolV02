@@ -169,20 +169,21 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         "Content-Type": "application/json"
     }
     
-    # Preparar a URL base
-    base_url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/message"
-    
-    # Se tiver link, usar o endpoint de texto com preview
+    # Se tiver link, usar o endpoint de send-link
     if has_link and link_data:
-        url = f"{base_url}/text"
+        url = f"{ZAPI_BASE}/send-link"
         payload = {
             "phone": phone,
             "message": message,
-            "preview_url": True
+            "image": link_data.get("image"),  # Optional
+            "linkUrl": link_data["url"],
+            "title": link_data["title"],
+            "linkDescription": link_data["description"],
+            "linkType": "LARGE"  # Use LARGE para melhor visualização
         }
     else:
         # Caso contrário, usar o endpoint padrão de texto
-        url = f"{base_url}/text"
+        url = f"{ZAPI_BASE}/message/text"
         payload = {
             "phone": phone,
             "message": message
@@ -277,21 +278,22 @@ def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | Non
             f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
             f"📅 Data: {formatted_dt}\n"
             "🖥️ Informações da reunião Zoom:\n\n"
+            f"{zoom_url}"  # Link precisa estar no final da mensagem para funcionar
         )
-        
-        lead_message += f"Link de acesso:\n{zoom_url}\n\n"
-        lead_message += f"ID da reunião: {zoom_id}\n"
-        lead_message += f"Senha: {zoom_pwd}\n"
-        lead_message += "\nAguardamos você! Qualquer dúvida, estamos à disposição."
         
         # Dados do link
         link_data = {
             "url": zoom_url,
             "title": "Reunião Zoom",
-            "description": f"Reunião agendada para {formatted_dt}"
+            "description": f"Reunião agendada para {formatted_dt}",
+            "image": "https://cdn.icon-icons.com/icons2/2428/PNG/512/zoom_logo_icon_147196.png"  # Logo do Zoom
         }
         
         send_wa_message(whatsapp, lead_message, has_link=True, link_data=link_data)
+        
+        # Enviar informações adicionais em uma segunda mensagem
+        additional_info = f"ID da reunião: {zoom_id}\nSenha: {zoom_pwd}\n\nAguardamos você! Qualquer dúvida, estamos à disposição."
+        send_wa_message(whatsapp, additional_info)
     
     # Mensagem para o time de vendas
     sales_message = (
