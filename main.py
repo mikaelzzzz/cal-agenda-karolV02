@@ -37,8 +37,6 @@ HEADERS_NOTION = {
     "Notion-Version": "2022-06-28",
 }
 
-ZAPI_BASE = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}"
-
 # -----------------------------------------------------------------------------
 # FastAPI app & scheduler
 # -----------------------------------------------------------------------------
@@ -171,7 +169,7 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
     
     # Se tiver link, usar o endpoint de send-link
     if has_link and link_data:
-        url = f"{ZAPI_BASE}/send-link"
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-link"
         payload = {
             "phone": phone,
             "message": message,
@@ -183,7 +181,7 @@ def send_wa_message(phone: str, message: str, has_link: bool = False, link_data:
         }
     else:
         # Caso contrário, usar o endpoint padrão de texto
-        url = f"{ZAPI_BASE}/message/text"
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/message/text"
         payload = {
             "phone": phone,
             "message": message
