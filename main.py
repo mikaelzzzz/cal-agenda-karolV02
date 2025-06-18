@@ -160,6 +160,9 @@ def notion_update_datetime(page_id: str, when: str) -> None:
         "properties": {
             "Data Agendada pelo Lead": {
                 "rich_text": [{"text": {"content": when}}]
+            },
+            "Status": {
+                "status": {"name": "Agendado reunião"}
             }
         }
     }
