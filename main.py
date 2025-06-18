@@ -10,7 +10,7 @@ from typing import List, Optional
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, status, Body
 from pydantic import BaseModel, Field
 import pytz
 from dotenv import load_dotenv
@@ -77,6 +77,25 @@ class Booking(BaseModel):
 class CalWebhookPayload(BaseModel):
     trigger_event: str = Field(..., alias="triggerEvent")
     payload: Booking
+
+
+class ScheduleTestRequest(BaseModel):
+    first_name: str
+    meeting_datetime: str  # ISO format string
+
+
+class ScheduleLeadTestRequest(BaseModel):
+    email: str
+    meeting_datetime: str  # ISO format string
+    first_name: str = "Lead"
+
+
+class SendLeadMessageRequest(BaseModel):
+    email: str
+    meeting_datetime: str  # ISO format string
+    first_name: str = "Lead"
+    which: str = "1d"  # opções: "1d", "4h", "after"
+    send_now: bool = True
 
 
 # -----------------------------------------------------------------------------
@@ -288,31 +307,15 @@ def send_immediate_booking_notifications(attendee_name: str, whatsapp: str | Non
     """Send immediate WhatsApp notifications when a booking is made."""
     formatted_dt = format_pt_br(start_dt)
     zoom_url = "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1"
-    zoom_id = "890 284 1864"
-    zoom_pwd = "Flexge2025"
     
     # Mensagem para o lead
     if whatsapp:
         lead_message = (
             f"Olá {attendee_name}, sua reunião foi agendada com sucesso! 🎉\n\n"
             f"📅 Data: {formatted_dt}\n"
-            "🖥️ Informações da reunião Zoom:\n\n"
-            f"{zoom_url}"  # Link precisa estar no final da mensagem para funcionar
+            f"🖥️ Link da reunião Zoom:\n{zoom_url} "
         )
-        
-        # Dados do link
-        link_data = {
-            "url": zoom_url,
-            "title": "Reunião Zoom",
-            "description": f"Reunião agendada para {formatted_dt}",
-            "image": "https://cdn.icon-icons.com/icons2/2428/PNG/512/zoom_logo_icon_147196.png"  # Logo do Zoom
-        }
-        
-        send_wa_message(whatsapp, lead_message, has_link=True, link_data=link_data)
-        
-        # Enviar informações adicionais em uma segunda mensagem
-        additional_info = f"ID da reunião: {zoom_id}\nSenha: {zoom_pwd}\n\nAguardamos você! Qualquer dúvida, estamos à disposição."
-        send_wa_message(whatsapp, additional_info)
+        send_wa_message(whatsapp, lead_message)
     
     # Mensagem para o time de vendas
     sales_message = (
@@ -418,4 +421,129 @@ async def root():
         "version": "1.0.0",
         "timezone": str(TZ),
         "admin_phones_configured": len(ADMIN_PHONES),
-    } 
+    }
+
+
+@app.post("/test/schedule-messages", tags=["Testes"])
+def test_schedule_messages(
+    req: ScheduleTestRequest = Body(...)
+):
+    """Agende mensagens futuras para teste (admins)."""
+    try:
+        dt = datetime.fromisoformat(req.meeting_datetime)
+        schedule_messages(req.first_name, dt)
+        return {"success": True, "scheduled_for": req.meeting_datetime}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/test/schedule-lead-messages", tags=["Testes"])
+def test_schedule_lead_messages(
+    req: ScheduleLeadTestRequest = Body(...)
+):
+    """Agende mensagens futuras para um lead (buscando telefone pelo e-mail no Notion)."""
+    try:
+        dt = datetime.fromisoformat(req.meeting_datetime)
+        # Buscar telefone no Notion
+        page_id = notion_find_page(req.email, None)
+        if not page_id:
+            return {"success": False, "error": "Lead não encontrado no Notion"}
+        # Buscar telefone na página do Notion
+        # Buscar detalhes da página
+        resp = httpx.get(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers=HEADERS_NOTION,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        phone = None
+        props = page.get("properties", {})
+        for k, v in props.items():
+            if v.get("type") == "phone_number" and v.get("phone_number"):
+                phone = v["phone_number"]
+                break
+        if not phone:
+            return {"success": False, "error": "Telefone não encontrado para o lead no Notion"}
+        # Agendar mensagens futuras para o lead
+        meeting_str = dt.strftime("%H:%M")
+        scheduler.add_job(
+            send_wa_message,
+            trigger=DateTrigger(run_date=dt - timedelta(days=1)),
+            args=[phone, f"Olá {req.first_name}, amanhã temos nossa reunião às {meeting_str}. Estamos ansiosos para falar com você!"],
+            id=f"lead_whatsapp_{dt.timestamp()}_1day",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            send_wa_message,
+            trigger=DateTrigger(run_date=dt - timedelta(hours=4)),
+            args=[phone, f"Oi {req.first_name}, tudo certo para a nossa reunião hoje às {meeting_str}?"],
+            id=f"lead_whatsapp_{dt.timestamp()}_4h",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            send_wa_message,
+            trigger=DateTrigger(run_date=dt + timedelta(hours=1)),
+            args=[phone, f"{req.first_name}, obrigado pela reunião! Qualquer dúvida, estamos à disposição."],
+            id=f"lead_whatsapp_{dt.timestamp()}_after",
+            replace_existing=True,
+        )
+        return {"success": True, "scheduled_for": req.meeting_datetime, "phone": phone}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/test/send-lead-message", tags=["Testes"])
+def test_send_lead_message(
+    req: SendLeadMessageRequest = Body(...)
+):
+    """Envie ou agende uma mensagem específica para o lead (buscando telefone pelo e-mail no Notion)."""
+    try:
+        dt = datetime.fromisoformat(req.meeting_datetime)
+        # Buscar telefone no Notion
+        page_id = notion_find_page(req.email, None)
+        if not page_id:
+            return {"success": False, "error": "Lead não encontrado no Notion"}
+        # Buscar telefone na página do Notion
+        resp = httpx.get(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers=HEADERS_NOTION,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        phone = None
+        props = page.get("properties", {})
+        for k, v in props.items():
+            if v.get("type") == "phone_number" and v.get("phone_number"):
+                phone = v["phone_number"]
+                break
+        if not phone:
+            return {"success": False, "error": "Telefone não encontrado para o lead no Notion"}
+        meeting_str = dt.strftime("%H:%M")
+        # Escolher mensagem
+        if req.which == "1d":
+            msg = f"Olá {req.first_name}, amanhã temos nossa reunião às {meeting_str}. Estamos ansiosos para falar com você!"
+            when = dt - timedelta(days=1)
+        elif req.which == "4h":
+            msg = f"Oi {req.first_name}, tudo certo para a nossa reunião hoje às {meeting_str}?"
+            when = dt - timedelta(hours=4)
+        elif req.which == "after":
+            msg = f"{req.first_name}, obrigado pela reunião! Qualquer dúvida, estamos à disposição."
+            when = dt + timedelta(hours=1)
+        else:
+            return {"success": False, "error": "Tipo de mensagem inválido. Use: 1d, 4h ou after."}
+        if req.send_now:
+            send_wa_message(phone, msg)
+            return {"success": True, "sent_now": True, "phone": phone, "message": msg}
+        else:
+            scheduler.add_job(
+                send_wa_message,
+                trigger=DateTrigger(run_date=when),
+                args=[phone, msg],
+                id=f"lead_whatsapp_{dt.timestamp()}_{req.which}",
+                replace_existing=True,
+            )
+            return {"success": True, "scheduled_for": when.isoformat(), "phone": phone, "message": msg}
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
