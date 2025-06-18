@@ -14,6 +14,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, st
 from pydantic import BaseModel, Field
 import pytz
 from dotenv import load_dotenv
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -159,44 +160,41 @@ def notion_update_datetime(page_id: str, when: str) -> None:
         raise
 
 
-def send_wa_message(phone: str, message: str, has_link: bool = False, link_data: dict = None) -> None:
+def send_wa_message(phone: str, message: str, has_link: bool = False, link_data: dict | None = None) -> None:
+    """Send a WhatsApp message using Z-API."""
     print(f"Enviando mensagem WhatsApp para {phone}")
     
-    # Remove o '+' do início do número se existir
-    if phone.startswith('+'):
-        phone = phone[1:]
+    headers = {
+        "Client-Token": ZAPI_CLIENT_TOKEN,
+        "Content-Type": "application/json"
+    }
     
-    headers = {}
-    if ZAPI_CLIENT_TOKEN:
-        headers["Client-Token"] = ZAPI_CLIENT_TOKEN
+    # Preparar a URL base
+    base_url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/message"
     
+    # Se tiver link, usar o endpoint de texto com preview
     if has_link and link_data:
-        # Usa o endpoint text-message com preview de link
-        endpoint = f"{ZAPI_BASE}/message/text"
-        preview_url = True
+        url = f"{base_url}/text"
         payload = {
             "phone": phone,
-            "message": (
-                f"{message}\n\n"
-                f"Link da reunião: {link_data['url']}"
-            ),
-            "preview_url": preview_url
+            "message": message,
+            "preview_url": True
         }
     else:
-        # Usa o endpoint padrão para mensagens simples
-        endpoint = f"{ZAPI_BASE}/message/text"
+        # Caso contrário, usar o endpoint padrão de texto
+        url = f"{base_url}/text"
         payload = {
             "phone": phone,
             "message": message
         }
-
+    
     try:
-        resp = httpx.post(endpoint, json=payload, headers=headers, timeout=15)
-        resp.raise_for_status()
+        response = requests.post(url, headers=headers, json=payload)
         print(f"Mensagem WhatsApp enviada com sucesso para {phone}")
-        print(f"Resposta Z-API: {resp.text}")
+        print(f"Resposta Z-API: {response.text}")
+        response.raise_for_status()
     except Exception as e:
-        print(f"Erro ao enviar mensagem WhatsApp para {phone}: {str(e)}")
+        print(f"Erro ao enviar mensagem WhatsApp: {str(e)}")
         raise
 
 
