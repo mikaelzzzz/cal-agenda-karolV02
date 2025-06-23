@@ -325,7 +325,7 @@ def send_immediate_booking_notifications(
         "👉 https://student.flexge.com/v2/placement/karollinyeloica\n"
         "Faça o teste sem pressa, no seu tempo, ok? 😉\n\n"
         "Aproveite e assista a este vídeo para entender por que nosso método é diferenciado!\n"
-        "👉 https://www.youtube.com/watch?v=gjNVofHX6gg\n"
+        "👉 https://www.youtube.com/watch?v=fKepCx3lMZI\n"
     )
     if whatsapp:
         send_wa_message(whatsapp, lead_message)
