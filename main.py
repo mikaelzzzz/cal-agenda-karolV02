@@ -311,26 +311,43 @@ def send_immediate_booking_notifications(
     whatsapp: str | None,
     start_dt: datetime,
 ) -> None:
-    """Envia a mensagem de confirmação para o lead e avisa o time de vendas."""
-    zoom_url = "https://us06web.zoom.us/j/8902841864?pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1"
+    """Envia três mensagens separadas: confirmação + Zoom, teste, vídeo."""
+    zoom_url = (
+        "https://us06web.zoom.us/j/8902841864?"
+        "pwd=OIjXN37C7fjELriVg4y387EbXUSVsR.1"
+    )
 
-    # ---------- mensagem do lead ----------
-    lead_message = (
+    # 1️⃣ confirmação + link do Zoom
+    msg1 = (
         f"Olá, {attendee_name}! 👋\n\n"
-        f"✅ Sua reunião está confirmada para *{start_dt.strftime('%d/%m')}* às "
-        f"*{start_dt.strftime('%H:%M')}*.\n\n"
+        f"✅ Sua reunião está confirmada para *{start_dt.strftime('%d/%m')}* "
+        f"às *{start_dt.strftime('%H:%M')}*.\n\n"
         "🖥️ Acesse a sala da reunião no link abaixo 👇\n"
-        f"{zoom_url}\n\n"
+        f"{zoom_url}"
+    )
+
+    # 2️⃣ link do teste de nivelamento
+    msg2 = (
         "Antes disso, que tal fazer nosso teste de nivelamento?\n"
         "👉 https://student.flexge.com/v2/placement/karollinyeloica\n"
-        "Faça o teste sem pressa, no seu tempo, ok? 😉\n\n"
-        "Aproveite e assista a este vídeo para entender por que nosso método é diferenciado!\n"
-        "👉 https://www.youtube.com/watch?v=fKepCx3lMZI\n"
+        "Faça o teste sem pressa, no seu tempo, ok? 😉"
     )
-    if whatsapp:
-        send_wa_message(whatsapp, lead_message)
 
-    # ---------- mensagem para o time de vendas ----------
+    # 3️⃣ link do vídeo sobre o método
+    msg3 = (
+        "Aproveite e assista a este vídeo para entender por que nosso método "
+        "é diferenciado!\n"
+        "👉 https://www.youtube.com/watch?v=fKepCx3lMZI"
+    )
+
+    if whatsapp:
+        # Envia cada mensagem individualmente
+        send_wa_message(whatsapp, msg1)
+        send_wa_message(whatsapp, msg2)
+        send_wa_message(whatsapp, msg3)
+
+    # ------------------------------------------------------------------
+    # Mensagem para o time de vendas continua igual
     formatted_pt = format_pt_br(start_dt)
     sales_message = (
         "💼 Nova Reunião Agendada!\n\n"
@@ -339,6 +356,7 @@ def send_immediate_booking_notifications(
     )
     for admin_phone in ADMIN_PHONES:
         send_wa_message(admin_phone, sales_message)
+
 
 
 
