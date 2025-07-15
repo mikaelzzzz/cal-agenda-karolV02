@@ -118,9 +118,7 @@ def notion_find_page(phone: str | None) -> Optional[str]:
     if not phone:
         return None
 
-    # Remove caracteres não numéricos
     clean_phone = ''.join(filter(str.isdigit, phone))
-    # Remove código do país se presente
     if clean_phone.startswith('55'):
         clean_phone = clean_phone[2:]
 
@@ -442,7 +440,7 @@ async def cal_webhook(
         print(f"Nenhum número de WhatsApp fornecido. userFieldsResponses: {ufr}, responses: {getattr(data.payload, 'responses', None)}")
 
     try:
-        page_id = notion_find_page(attendee.email, whatsapp)
+        page_id = notion_find_page(whatsapp)
         if page_id:
             notion_update_datetime(page_id, formatted_pt)
             print(f"✓ Notion atualizado com sucesso")
