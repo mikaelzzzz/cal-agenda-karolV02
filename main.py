@@ -422,7 +422,7 @@ async def cal_webhook(
                 whatsapp = resp.WhatsApp.value
     # 3. Se ainda não encontrou, busca no Notion (propriedade Telefone, tipo Rich text)
     if not whatsapp and attendee.email:
-        page_id = notion_find_page(attendee.email, None)
+        page_id = notion_find_page(whatsapp)
         if page_id:
             resp = httpx.get(
                 f"https://api.notion.com/v1/pages/{page_id}",
