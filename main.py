@@ -114,26 +114,20 @@ def format_pt_br(dt: datetime) -> str:
     return dt.strftime("%d/%m/%Y - %I:%M%p").lower().replace("am", "am").replace("pm", "pm")
 
 
-def notion_find_page(email: str | None, phone: str | None) -> Optional[str]:
-    if not (email or phone):
+def notion_find_page(phone: str | None) -> Optional[str]:
+    if not phone:
         return None
 
-    filters = []
-    if email:
-        filters.append({"property": "Email", "email": {"equals": email}})
-    if phone:
-        # Remove caracteres não numéricos do telefone
-        clean_phone = ''.join(filter(str.isdigit, phone))
-        # Se começar com +55, remove
-        if clean_phone.startswith('55'):
-            clean_phone = clean_phone[2:]
-        filters.append({"property": "Telefone", "phone_number": {"equals": clean_phone}})
+    # Remove caracteres não numéricos
+    clean_phone = ''.join(filter(str.isdigit, phone))
+    # Remove código do país se presente
+    if clean_phone.startswith('55'):
+        clean_phone = clean_phone[2:]
 
-    # Combine filters with OR if both present
-    if len(filters) == 2:
-        filter_json = {"or": filters}
-    else:
-        filter_json = filters[0]
+    filter_json = {
+        "property": "Telefone",
+        "phone_number": {"equals": clean_phone}
+    }
 
     print(f"Buscando no Notion com filtro: {json.dumps(filter_json, indent=2)}")
 
@@ -145,12 +139,12 @@ def notion_find_page(email: str | None, phone: str | None) -> Optional[str]:
     )
     resp.raise_for_status()
     results = resp.json().get("results", [])
-    
+
     if results:
         print(f"Encontrou página no Notion: {results[0]['id']}")
     else:
         print("Nenhuma página encontrada no Notion")
-    
+
     return results[0]["id"] if results else None
 
 
